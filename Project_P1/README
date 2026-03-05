@@ -1,0 +1,99 @@
+A detailed README (.txt or .md file)including:
+– Implementation details for each method
+– Results obtained on the development set
+– Notes on preprocessing or model choices
+– Clear and easy to follow instructions on how to run your code
+
+Q1: ANN with Vector Embeddings (GloVe + SentenceTransformers)
+[Overview]
+For Q1, I implemented a multi-task feedforward ANN (MLP) to predict Emotion (regression), Empathy (regression), and EmotionalPolarity (classification) from each conversational turn. I experimented with two fixed-length embedding approaches: SentenceTransformer sentence embeddings and GloVe word embeddings (mean pooled).
+P1(1)
+
+[Implementation Details]
+1) Input / Output
+    - Input text: text column (each row is a conversational turn)
+    - Targets (train/dev only):
+        Emotion (float, regression)
+        Empathy (float, regression)
+        EmotionalPolarity (int, classification)
+2) Preprocessing / Data Cleaning
+    - CSV reading used:
+        pd.read_csv(..., engine="python", on_bad_lines="skip")
+        - because the dev file contained malformed lines/quotes that caused parser errors.
+        - The dev dataset had an extra column compared to train, so I aligned dev to train columns by using the intersection of columns.
+        - Polarity label cleanup: The train set had a very rare label 3 (only 1 sample). To avoid unstable training, I merged label 3 into label 2, resulting in 3 classes {0, 1, 2} for EmotionalPolarity.
+3) Embedding Methods
+    A. SentenceTransformer embeddings
+        - Model: sentence-transformers/all-MiniLM-L6-v2
+        - Each text was encoded into a single vector using the SentenceTransformer encoder.
+        - Used normalized embeddings (normalize_embeddings=True) for stability.
+    B. GloVe embeddings
+        - Model: glove-wiki-gigaword-300 via gensim.downloader
+        - Tokenized text using a simple regex and computed a sentence vector by:
+            - collecting all in-vocabulary word vectors
+            - taking the mean of those vectors
+            - if no known words exist, used a zero vector
+4) ANN Model Architecture (PyTorch)
+    - A shared MLP backbone + three task-specific heads:
+        - Backbone: Linear → ReLU → Dropout → Linear → ReLU → Dropout
+        - Head 1: Emotion regression (1 output)
+        - Head 2: Empathy regression (1 output)
+        - Head 3: Polarity classification (3 logits)
+Hyperparameters:
+    - hidden size = 256
+    - dropout = 0.2
+    - batch size = 64
+    - optimizer = Adam
+    - learning rate = 1e-3
+    - training device: CPU
+
+5) Loss Functions (Multi-task)
+    Total loss = Emotion loss + Empathy loss + Polarity loss
+        - Emotion: MSELoss
+        - Empathy: MSELoss
+        - EmotionalPolarity: CrossEntropyLoss
+
+[Development Results]
+ANN + SentenceTransformer (all-MiniLM-L6-v2)
+    - Dev Emotion MAE: 0.5074
+    - Dev Empathy MAE: 0.7214
+    - Dev Polarity Accuracy: 0.6891
+    - Dev Polarity weighted F1: 0.6774
+
+Output prediction file:
+    - outputs/predictions_ann_sbert.csv
+
+ANN + GloVe (glove-wiki-gigaword-300)
+(Best epoch: Epoch 7)
+    - Dev Emotion MAE: 0.5171
+    - Dev Empathy MAE: 0.7427
+    - Dev Polarity Accuracy: 0.6705
+    - Dev Polarity weighted F1: 0.6556
+
+Output prediction file: outputs/predictions_ann_glove.csv
+
+Conclusion: SentenceTransformer embeddings performed better than GloVe on the dev set across all three tasks.
+
+[Notes on Model Choices]
+- I started with sentence-level embeddings (SentenceTransformer) because they provide strong semantic representations with minimal feature engineering.
+- I used GloVe as a classical baseline by mean-pooling word vectors; this is simpler but loses some context compared to SentenceTransformer.
+- I merged the extremely rare polarity label 3 into 2 to prevent instability in classification training.
+
+[How to Run (Q1)]
+Folder setup
+    -Place the dataset files in:
+        data/trac2_CONVT_train.csv
+        data/trac2_CONVT_dev.csv
+        data/trac2_CONVT_test.csv
+
+Install dependencies
+    Run in terminal:
+        pip install pandas numpy scikit-learn torch sentence-transformers gensim scipy tqdm
+    Run SentenceTransformer ANN
+        python ann_sbert.py
+    This will produce:
+        outputs/predictions_ann_sbert.csv
+Run GloVe ANN
+    python ann_glove.py
+This will produce:
+    outputs/predictions_ann_glove.csv
